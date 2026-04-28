@@ -1,3 +1,7 @@
+"""
+File for the preprocessing
+"""
+
 import cv2
 
 

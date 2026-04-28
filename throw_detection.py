@@ -1,3 +1,7 @@
+"""
+File for the throw detection.
+"""
+
 from collections import deque
 from typing import Deque, List, Optional, Tuple
 
@@ -28,7 +32,9 @@ class ThrowDetector:
         self.cooldown = 0
         self.last_status = "Zurückgesetzt"
 
-    def _get_largest_box_center(self, boxes: List[Tuple[int, int, int, int]]) -> Optional[int]:
+    def _get_largest_box_center(
+        self, boxes: List[Tuple[int, int, int, int]]
+    ) -> Optional[int]:
         if not boxes:
             return None
 
@@ -37,12 +43,16 @@ class ThrowDetector:
         return y + h // 2
 
     def _calculate_trend(self) -> Optional[int]:
-        valid_positions = [position for position in self.history if position is not None]
+        valid_positions = [
+            position for position in self.history if position is not None
+        ]
         if len(valid_positions) < 2:
             return None
         return valid_positions[-1] - valid_positions[0]
 
-    def update(self, boxes: List[Tuple[int, int, int, int]], frame_height: int) -> Tuple[bool, str]:
+    def update(
+        self, boxes: List[Tuple[int, int, int, int]], frame_height: int
+    ) -> Tuple[bool, str]:
         """Update detector with current motion boxes and return detection state."""
         center_y = self._get_largest_box_center(boxes)
         self.history.append(center_y)
@@ -68,7 +78,11 @@ class ThrowDetector:
 
         zone_start = frame_height * self.zone_start_ratio
         zone_end = frame_height * self.zone_end_ratio
-        if trend < -self.min_upward_delta and valid_positions[0] > zone_start and valid_positions[-1] < zone_end:
+        if (
+            trend < -self.min_upward_delta
+            and valid_positions[0] > zone_start
+            and valid_positions[-1] < zone_end
+        ):
             self.cooldown = self.cooldown_frames
             self.last_status = "WURF ERKANNT"
             return True, self.last_status

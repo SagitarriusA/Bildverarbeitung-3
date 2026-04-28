@@ -1,3 +1,7 @@
+"""
+File to detect the motion.
+"""
+
 import cv2
 
 

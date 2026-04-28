@@ -1,9 +1,15 @@
+"""
+File to evaluate the frames.
+"""
+
 from collections import deque
 from typing import Deque, List, Optional, Tuple
 
 
 class ThrowEvaluator:
-    """Evaluate a detected throw as good or bad based on motion history."""
+    """
+    Evaluate a detected throw as good or bad based on motion history.
+    """
 
     def __init__(
         self,
@@ -24,7 +30,9 @@ class ThrowEvaluator:
         self.last_label = "Keine Auswertung"
         self.last_status = "Zurückgesetzt"
 
-    def _get_largest_box_center(self, boxes: List[Tuple[int, int, int, int]]) -> Optional[int]:
+    def _get_largest_box_center(
+        self, boxes: List[Tuple[int, int, int, int]]
+    ) -> Optional[int]:
         if not boxes:
             return None
 

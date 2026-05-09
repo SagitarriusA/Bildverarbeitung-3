@@ -4,5 +4,6 @@
 
 # Python-Cache-files:
 __pycache__/
+.mypy_cache/
 *.py[cod]
 *$py.class

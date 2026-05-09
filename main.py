@@ -62,22 +62,21 @@ def main() -> None:  # pylint: disable=too-many-locals
     with open("config.json", encoding="utf-8", mode="r") as config_file:
         config_data = json.load(config_file)
 
-    camera_index: int = config_data.get("camera_index", 0)
-    frame_width: int = config_data.get("frame_width", 320)
-    frame_height: int = config_data.get("frame_height", 240)
-    min_motion_area: int = config_data.get("min_motion_area", 500)
-    dilate_iterations: int = config_data.get("dilate_iterations", 2)
-    throw_history_length: int = config_data.get("throw_history_length", 8)
-    throw_min_upward_delta: int = config_data.get("throw_min_upward_delta", 20)
-    throw_cooldown_frames: int = config_data.get("throw_cooldown_frames", 30)
-    throw_zone_start_ratio: float = config_data.get("throw_zone_start_ratio", 0.65)
-    throw_zone_end_ratio: float = config_data.get("throw_zone_end_ratio", 0.35)
-    evaluation_history_length: int = config_data.get("evaluation_history_length", 8)
-    evaluation_good_delta: int = config_data.get("evaluation_good_delta", 35)
-    show_gray_window: bool = config_data.get("show_gray_window", True)
-    show_mask_window: bool = config_data.get("show_mask_window", True)
-    draw_throw_zone: bool = config_data.get("draw_throw_zone", True)
-    throw_zone_ratio: float = config_data.get("throw_zone_ratio", 0.4)
+    camera_index: int = config_data.get("CAMERA_INDEX", 0)
+    frame_width: int = config_data.get("FRAME_WIDTH", 320)
+    frame_height: int = config_data.get("FRAME_HEIGHT", 240)
+    min_motion_area: int = config_data.get("MIN_MOTION_AREA", 500)
+    dilate_iterations: int = config_data.get("DILATE_ITERATIONS", 2)
+    throw_history_length: int = config_data.get("THROW_HISTORY_LENGTH", 8)
+    throw_min_upward_delta: int = config_data.get("THROW_MIN_UPWARD_DELTA", 20)
+    throw_cooldown_frames: int = config_data.get("THROW_COOLDOWN_FRAMES", 30)
+    throw_zone_start_ratio: float = config_data.get("THROW_ZONE_START_RATIO", 0.65)
+    throw_zone_end_ratio: float = config_data.get("THROW_ZONE_END_RATIO", 0.2)
+    evaluation_history_length: int = config_data.get("EVALUATION_HISTORY_LENGTH", 8)
+    evaluation_good_delta: int = config_data.get("EVALUATION_GOOD_DELTA", 35)
+    show_gray_window: bool = config_data.get("SHOW_GRAY_WINDOW", True)
+    show_mask_window: bool = config_data.get("SHOW_MASK_WINDOW", True)
+    draw_throw_zone: bool = config_data.get("DRAW_THROW_ZONE", True)
 
     paused: bool = False
     last_result: Optional[Tuple[np.ndarray, List, bool, str, str, str]] = None
@@ -128,6 +127,7 @@ def main() -> None:  # pylint: disable=too-many-locals
                 # Detect motion in the frame:
                 motion_mask, boxes = detect_motion(
                     blurred,
+                    resized,
                     min_area=min_motion_area,
                     dilate_iterations=dilate_iterations,
                 )
@@ -145,12 +145,21 @@ def main() -> None:  # pylint: disable=too-many-locals
 
                 # Check if the throw zone should be drawn:
                 if draw_throw_zone:
-                    zone_y: int = int(frame_height * throw_zone_ratio)
+                    zone_y_lower: int = int(frame_height * throw_zone_start_ratio)
+                    zone_y_upper: int = int(frame_height * throw_zone_end_ratio)
 
                     cv2.line(  # pylint: disable=no-member
                         motion_view,
-                        (0, zone_y),
-                        (frame_width, zone_y),
+                        (0, zone_y_lower),
+                        (frame_width, zone_y_lower),
+                        (255, 0, 0),
+                        2,
+                    )
+
+                    cv2.line(  # pylint: disable=no-member
+                        motion_view,
+                        (0, zone_y_upper),
+                        (frame_width, zone_y_upper),
                         (255, 0, 0),
                         2,
                     )

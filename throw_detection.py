@@ -105,6 +105,7 @@ class ThrowDetector:  # pylint: disable=too-many-instance-attributes
 
         # If we cannot calculate a trend, we are still tracking movement:
         if trend is None:
+            print("Not enough data to calculate trend")
             self.last_status = "Detect motion"
             return False, self.last_status
 

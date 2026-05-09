@@ -3,28 +3,11 @@ Main file for the wurf-coach-project for the module BV3.
 """
 
 import time
+import json
 from typing import Optional, List
 import cv2
+import numpy as np
 from camera import close_camera, open_camera, read_frame
-from config import (
-    CAMERA_INDEX,
-    DILATE_ITERATIONS,
-    DRAW_THROW_ZONE,
-    EVALUATION_GOOD_DELTA,
-    EVALUATION_HISTORY_LENGTH,
-    FRAME_HEIGHT,
-    FRAME_WIDTH,
-    MIN_MOTION_AREA,
-    SHOW_GRAY_WINDOW,
-    SHOW_MASK_WINDOW,
-    THRESHOLD_VALUE,
-    THROW_COOLDOWN_FRAMES,
-    THROW_HISTORY_LENGTH,
-    THROW_MIN_UPWARD_DELTA,
-    THROW_ZONE_END_RATIO,
-    THROW_ZONE_RATIO,
-    THROW_ZONE_START_RATIO,
-)
 from motion_detection import detect_motion
 from preprocessing import preprocess_frame
 from throw_detection import ThrowDetector
@@ -32,7 +15,7 @@ from evaluation import ThrowEvaluator
 
 
 def draw_status(
-    frame: cv2.Mat,  # pylint: disable=no-member
+    frame: np.ndarray,  # pylint: disable=no-member
     status_text: str,
     alert: bool = False,
     line: int = 1,
@@ -59,7 +42,7 @@ def draw_status(
     )
 
 
-def draw_boxes(frame: cv2.Mat, boxes: List) -> None:  # pylint: disable=no-member
+def draw_boxes(frame: np.ndarray, boxes: List) -> None:  # pylint: disable=no-member
     """
     Draw motion boxes on the output frame.
     """
@@ -76,29 +59,50 @@ def main() -> None:  # pylint: disable=too-many-locals
     Main function for the wurf-coach-project.
     """
 
+    with open("config.json", encoding="utf-8", mode="r") as config_file:
+        config_data = json.load(config_file)
+
+    camera_index: int = config_data.get("camera_index", 0)
+    frame_width: int = config_data.get("frame_width", 320)
+    frame_height: int = config_data.get("frame_height", 240)
+    min_motion_area: int = config_data.get("min_motion_area", 500)
+    threshold_value: int = config_data.get("threshold_value", 25)
+    dilate_iterations: int = config_data.get("dilate_iterations", 2)
+    throw_history_length: int = config_data.get("throw_history_length", 8)
+    throw_min_upward_delta: int = config_data.get("throw_min_upward_delta", 20)
+    throw_cooldown_frames: int = config_data.get("throw_cooldown_frames", 30)
+    throw_zone_start_ratio: float = config_data.get("throw_zone_start_ratio", 0.65)
+    throw_zone_end_ratio: float = config_data.get("throw_zone_end_ratio", 0.35)
+    evaluation_history_length: int = config_data.get("evaluation_history_length", 8)
+    evaluation_good_delta: int = config_data.get("evaluation_good_delta", 35)
+    show_gray_window: bool = config_data.get("show_gray_window", True)
+    show_mask_window: bool = config_data.get("show_mask_window", True)
+    draw_throw_zone: bool = config_data.get("draw_throw_zone", True)
+    throw_zone_ratio: float = config_data.get("throw_zone_ratio", 0.4)
+
     # Try to open the camera stream:
     try:
-        cap: cv2.VideoCapture = open_camera(CAMERA_INDEX)  # pylint: disable=no-member
+        cap: cv2.VideoCapture = open_camera(camera_index)  # pylint: disable=no-member
 
         print("Camera is running.")
         print("Press 'q' to end the script.")
 
-        previous_blurred: Optional[cv2.Mat] = None  # pylint: disable=no-member
+        previous_blurred: Optional[np.ndarray] = None  # pylint: disable=no-member
 
         # Setup the class throw detector:
         throw_detector = ThrowDetector(
-            history_length=THROW_HISTORY_LENGTH,
-            min_upward_delta=THROW_MIN_UPWARD_DELTA,
-            cooldown_frames=THROW_COOLDOWN_FRAMES,
-            zone_start_ratio=THROW_ZONE_START_RATIO,
-            zone_end_ratio=THROW_ZONE_END_RATIO,
+            history_length=throw_history_length,
+            min_upward_delta=throw_min_upward_delta,
+            cooldown_frames=throw_cooldown_frames,
+            zone_start_ratio=throw_zone_start_ratio,
+            zone_end_ratio=throw_zone_end_ratio,
         )
 
         # Setup the class throw evaluator:
         throw_evaluator = ThrowEvaluator(
-            history_length=EVALUATION_HISTORY_LENGTH,
-            good_delta=EVALUATION_GOOD_DELTA,
-            zone_end_ratio=THROW_ZONE_END_RATIO,
+            history_length=evaluation_history_length,
+            good_delta=evaluation_good_delta,
+            zone_end_ratio=throw_zone_end_ratio,
         )
 
         # Run the program until the user stops the program:
@@ -112,10 +116,10 @@ def main() -> None:  # pylint: disable=too-many-locals
                 break
 
             # Preprocess the frame:
-            resized, gray, blurred = preprocess_frame(frame, FRAME_WIDTH, FRAME_HEIGHT)
+            resized, gray, blurred = preprocess_frame(frame, frame_width, frame_height)
 
             # Copy the resized frame into a new variable:
-            motion_view: cv2.Mat = resized.copy()  # pylint: disable=no-member
+            motion_view: np.ndarray = resized.copy()  # pylint: disable=no-member
 
             # Check if there is a valide blurred previous frame:
             if previous_blurred is not None:
@@ -123,30 +127,30 @@ def main() -> None:  # pylint: disable=too-many-locals
                 motion_mask, boxes = detect_motion(
                     previous_blurred,
                     blurred,
-                    min_area=MIN_MOTION_AREA,
-                    threshold_value=THRESHOLD_VALUE,
-                    dilate_iterations=DILATE_ITERATIONS,
+                    min_area=min_motion_area,
+                    threshold_value=threshold_value,
+                    dilate_iterations=dilate_iterations,
                 )
 
                 # Draw the boxes for the detected motion:
                 draw_boxes(motion_view, boxes)
 
                 # Update the throw detector:
-                throw_detected, status_text = throw_detector.update(boxes, FRAME_HEIGHT)
+                throw_detected, status_text = throw_detector.update(boxes, frame_height)
                 evaluation_label, evaluation_status = throw_evaluator.update(
                     boxes,
-                    FRAME_HEIGHT,
+                    frame_height,
                     throw_detected=throw_detected,
                 )
 
                 # Check if the throw zone should be drawn:
-                if DRAW_THROW_ZONE:
-                    zone_y: int = int(FRAME_HEIGHT * THROW_ZONE_RATIO)
+                if draw_throw_zone:
+                    zone_y: int = int(frame_height * throw_zone_ratio)
 
                     cv2.line(  # pylint: disable=no-member
                         motion_view,
                         (0, zone_y),
-                        (FRAME_WIDTH, zone_y),
+                        (frame_width, zone_y),
                         (255, 0, 0),
                         2,
                     )
@@ -170,11 +174,11 @@ def main() -> None:  # pylint: disable=too-many-locals
                     draw_status(motion_view, status_text)
 
                 # Check if the mask should be shown:
-                if SHOW_MASK_WINDOW:
+                if show_mask_window:
                     cv2.imshow("Motion mask", motion_mask)  # pylint: disable=no-member
 
             # Check if the gray scaled image should be displayed:
-            if SHOW_GRAY_WINDOW:
+            if show_gray_window:
                 cv2.imshow("Grayscaled image", gray)  # pylint: disable=no-member
 
             # Display the detected motion:

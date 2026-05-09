@@ -2,110 +2,67 @@
 File to evaluate the frames.
 """
 
-from collections import deque
-from typing import Deque, List, Optional, Tuple
+from typing import List, Optional, Tuple
+import numpy as np
 
 
-class ThrowEvaluator:
+def calc_gradient_and_angle(
+    coords: List[Tuple[float, float]],
+) -> Tuple[Optional[float], Optional[float]]:
     """
-    Evaluate a detected throw as good or bad based on motion history.
+    Calculate the gradient and release angle from the first two points of the trajectory.
     """
 
-    def __init__(
-        self,
-        history_length: int = 8,
-        good_delta: int = 35,
-        zone_end_ratio: float = 0.35,
-    ) -> None:
-        """
-        Initialize the evaluator with parameters for history length, good delta, and zone end ratio.
-        """
+    # Need at least 2 points to calculate gradient and angle:
+    if len(coords) < 2:
+        print("Not enough points to calculate gradient and angle.")
+        return None, None
 
-        # Ensure parameters are within reasonable bounds and initialize history and status:
-        self.history_length: int = max(3, history_length)
-        self.good_delta: int = good_delta
-        self.zone_end_ratio: float = max(0.0, min(1.0, zone_end_ratio))
-        self.history: Deque[Optional[int]] = deque(maxlen=self.history_length)
-        self.last_label: str = "No evaluation"
-        self.last_status: str = "Waiting for movement"
+    # Get the first two points:
+    x1, y1 = coords[0]
+    x2, y2 = coords[1]
 
-    def reset(self) -> None:
-        """
-        Reset evaluator state and history.
-        """
+    # Calculate the gradient and angle:
+    dx = x2 - x1
+    dy = y2 - y1
 
-        # Clear the history and reset labels and status:
-        self.history.clear()
-        self.last_label = "No evaluation"
-        self.last_status = "Set back to initial state"
+    # Handle the case where dx is zero to avoid division by zero:
+    gradient = dy / dx if dx != 0 else float("inf")
+    angle_deg = np.rad2deg(np.arctan2(-dy, dx))
 
-    def _get_largest_box_center(
-        self, boxes: List[Tuple[int, int, int, int]]
-    ) -> Optional[int]:
-        """
-        Private method to get the center y-coordinate of the largest motion box.
-        """
+    return gradient, angle_deg
 
-        # If no boxes are detected, return None:
-        if not boxes:
-            return None
 
-        # Find the largest box based on area and return its center y-coordinate:
-        largest_box: Tuple[int, int, int, int] = max(
-            boxes, key=lambda box: box[2] * box[3]
-        )
-        _, y, _, h = largest_box
+def analyze_throw(
+    gradient: Optional[float], angle: Optional[float], ideal_angle: int = 50
+) -> str:
+    """
+    Analyze the throw based on the calculated gradient and angle.
+    """
 
-        return y + h // 2
+    # Check if we have valid gradient and angle values before analyzing:
+    if gradient is None or angle is None:
+        print("Cannot analyze throw without valid gradient and angle.")
+        return "Insufficient data for analysis"
 
-    def update(
-        self,
-        boxes: List[Tuple[int, int, int, int]],
-        frame_height: int,
-        throw_detected: bool = False,
-    ) -> Tuple[str, str]:
-        """
-        Update evaluator with boxes and return label and status.
-        """
+    # Print the value for the gradient and the angle for debugging and analysis:
+    print(
+        f"Throw analysis - Gradient: {gradient:.2f}, Release Angle: {angle:.2f} degrees"
+    )
 
-        # Get the center y-coordinate of the largest box and update history:
-        center_y: Optional[int] = self._get_largest_box_center(boxes)
-        self.history.append(center_y)
+    # Analyze the throw based on the deviation from the ideal angle:
+    deviation = abs(angle - ideal_angle)
 
-        # If no valid center is detected, we cannot evaluate the throw:
-        if center_y is None:
-            self.last_label = "No movement"
-            self.last_status = "Waiting for movement"
-            return self.last_label, self.last_status
+    # Define thresholds for evaluation:
+    if deviation <= 5:
+        return "Good throw"
 
-        # If a throw has not been detected yet, we cannot evaluate it:
-        if not throw_detected:
-            self.last_label = "Movement"
-            self.last_status = "No throw detected yet"
-            return self.last_label, self.last_status
+    if deviation <= 12:
+        if angle < ideal_angle:
+            return "Released too flat; release sooner"
+        return "Released too steep; release later"
 
-        # Filter out None values from history to analyze valid positions:
-        valid_positions = [pos for pos in self.history if pos is not None]
+    if angle < ideal_angle:
+        return "Too flat, release much sooner"
 
-        # If there are less than 2 valid positions, we cannot calculate a trend:
-        if len(valid_positions) < 2:
-            self.last_label = "Throw detected"
-            self.last_status = "Waiting for evaluation"
-            return self.last_label, self.last_status
-
-        # Calculate the upward movement delta and height ratio to evaluate the throw:
-        upward_delta = valid_positions[0] - valid_positions[-1]
-        height_ratio = valid_positions[-1] / frame_height
-
-        # Evaluate the throw based on the upward movement and height ratio vs defined thresholds:
-        if upward_delta >= self.good_delta and height_ratio < self.zone_end_ratio:
-            self.last_label = "Good throw"
-            self.last_status = "Strong, clear upward movement"
-        elif upward_delta >= self.good_delta:
-            self.last_label = "Average throw"
-            self.last_status = "Good movement, but not high enough"
-        else:
-            self.last_label = "Bad throw"
-            self.last_status = "Little upward movement"
-
-        return self.last_label, self.last_status
+    return "Too steep, release much later"

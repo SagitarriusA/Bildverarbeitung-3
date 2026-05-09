@@ -2,52 +2,62 @@
 File to detect the motion.
 """
 
-from typing import Tuple, List
+from typing import List, Tuple
 import numpy as np
 import cv2
 
+# Create once and reuse
+BACKGROUND_SUBTRACTOR = cv2.createBackgroundSubtractorMOG2(  # pylint: disable=no-member
+    history=100,
+    varThreshold=25,
+    detectShadows=False,
+)
+
 
 def detect_motion(
-    previous_frame: np.ndarray,
     current_frame: np.ndarray,
-    min_area: int = 500,
-    threshold_value: int = 25,
+    min_area: int = 100,
     dilate_iterations: int = 2,
 ) -> Tuple[np.ndarray, List]:
     """
-    Detect motion between two preprocessed frames and return motion mask and bounding boxes.
+    Detect motion using a background subtractor.
     """
 
-    # Check if there is a valid previous and valid current frame:
-    if previous_frame is None or current_frame is None:
-        raise ValueError(
-            "Not enought frames, either current or previous frame missing."
-        )
-
     # pylint: disable=no-member
-    # Calculate the difference in the frames:
-    diff: np.ndarray = cv2.absdiff(previous_frame, current_frame)
+    foreground_mask: np.ndarray = BACKGROUND_SUBTRACTOR.apply(current_frame)
 
-    # Set the threshold to dilate the frame:
-    _, thresh = cv2.threshold(diff, threshold_value, 255, cv2.THRESH_BINARY)
-    kernel: np.ndarray = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    processed_frame = cv2.dilate(thresh, kernel, iterations=dilate_iterations)
+    # Clean noise
+    kernel: np.ndarray = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE,
+        (3, 3),
+    )
 
-    # Detect the contours on the frame:
+    processed_frame: np.ndarray = cv2.morphologyEx(
+        foreground_mask,
+        cv2.MORPH_OPEN,
+        kernel,
+    )
+
+    processed_frame = cv2.dilate(
+        processed_frame,
+        kernel,
+        iterations=dilate_iterations,
+    )
+
     contours, _ = cv2.findContours(
-        processed_frame, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        processed_frame,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE,
     )
 
     boxes: list = []
 
-    # Find the interesting contours in the frame:
     for contour in contours:
         if cv2.contourArea(contour) < min_area:
             continue
 
-        # Calculate the bounding box for the detected contours:
         x, y, w, h = cv2.boundingRect(contour)
         boxes.append((x, y, w, h))
     # pylint: enable=no-member
 
-    return thresh, boxes
+    return processed_frame, boxes

@@ -2,9 +2,9 @@
 Main file for the wurf-coach-project for the module BV3.
 """
 
-import time
+# import time
 import json
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import cv2
 import numpy as np
 from camera import close_camera, open_camera, read_frame
@@ -66,7 +66,6 @@ def main() -> None:  # pylint: disable=too-many-locals
     frame_width: int = config_data.get("frame_width", 320)
     frame_height: int = config_data.get("frame_height", 240)
     min_motion_area: int = config_data.get("min_motion_area", 500)
-    threshold_value: int = config_data.get("threshold_value", 25)
     dilate_iterations: int = config_data.get("dilate_iterations", 2)
     throw_history_length: int = config_data.get("throw_history_length", 8)
     throw_min_upward_delta: int = config_data.get("throw_min_upward_delta", 20)
@@ -79,6 +78,9 @@ def main() -> None:  # pylint: disable=too-many-locals
     show_mask_window: bool = config_data.get("show_mask_window", True)
     draw_throw_zone: bool = config_data.get("draw_throw_zone", True)
     throw_zone_ratio: float = config_data.get("throw_zone_ratio", 0.4)
+
+    paused: bool = False
+    last_result: Optional[Tuple[np.ndarray, List, bool, str, str, str]] = None
 
     # Try to open the camera stream:
     try:
@@ -110,7 +112,7 @@ def main() -> None:  # pylint: disable=too-many-locals
             # Get the next frame:
             frame = read_frame(cap)
 
-            # Check if frame is a valide frame:
+            # Check if frame is a valid frame:
             if frame is None:
                 print("Error, couldn't get the next frame from the camera.")
                 break
@@ -121,14 +123,12 @@ def main() -> None:  # pylint: disable=too-many-locals
             # Copy the resized frame into a new variable:
             motion_view: np.ndarray = resized.copy()  # pylint: disable=no-member
 
-            # Check if there is a valide blurred previous frame:
-            if previous_blurred is not None:
+            # Check if there is a valid blurred previous frame:
+            if not paused and previous_blurred is not None:
                 # Detect motion in the frame:
                 motion_mask, boxes = detect_motion(
-                    previous_blurred,
                     blurred,
                     min_area=min_motion_area,
-                    threshold_value=threshold_value,
                     dilate_iterations=dilate_iterations,
                 )
 
@@ -157,6 +157,8 @@ def main() -> None:  # pylint: disable=too-many-locals
 
                 # Check if there was a throw detected:
                 if throw_detected:
+                    paused = True
+                    print(f"Throw detected: {status_text} - {evaluation_label}")
                     # Draw the status:
                     draw_status(
                         motion_view,
@@ -177,6 +179,42 @@ def main() -> None:  # pylint: disable=too-many-locals
                 if show_mask_window:
                     cv2.imshow("Motion mask", motion_mask)  # pylint: disable=no-member
 
+                # store last result for freezing view
+                last_result = (
+                    motion_mask,
+                    boxes,
+                    throw_detected,
+                    status_text,
+                    evaluation_label,
+                    evaluation_status,
+                )
+
+            if paused and last_result is not None:
+                (
+                    motion_mask,
+                    boxes,
+                    throw_detected,
+                    status_text,
+                    evaluation_label,
+                    evaluation_status,
+                ) = last_result
+
+                draw_boxes(motion_view, boxes)
+
+                draw_status(
+                    motion_view,
+                    evaluation_label,
+                    alert=(evaluation_label != "Good attempt"),
+                    line=1,
+                )
+
+                draw_status(
+                    motion_view,
+                    evaluation_status,
+                    alert=(evaluation_label != "Good attempt"),
+                    line=2,
+                )
+
             # Check if the gray scaled image should be displayed:
             if show_gray_window:
                 cv2.imshow("Grayscaled image", gray)  # pylint: disable=no-member
@@ -189,10 +227,14 @@ def main() -> None:  # pylint: disable=too-many-locals
 
             # Check if the progam should be stoped:
             if cv2.waitKey(1) & 0xFF == ord("q"):  # pylint: disable=no-member
+                paused = False
                 break
 
+            if cv2.waitKey(1) & 0xFF == ord("p"):  # pylint: disable=no-member
+                paused = False
+
             # Delay the processing of the next frame by 0.1s:
-            time.sleep(0.1)
+            # time.sleep(0.1)
 
     except RuntimeError as error:
         print(f"Error: {error}")

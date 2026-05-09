@@ -41,7 +41,7 @@ class ThrowDetector:  # pylint: disable=too-many-instance-attributes
         # Clear the history and reset cooldown and status:
         self.history.clear()
         self.cooldown = 0
-        self.last_status = "Zurückgesetzt"
+        self.last_status = "Reset"
 
     def _get_largest_box_center(
         self, boxes: List[Tuple[int, int, int, int]]
@@ -127,7 +127,7 @@ class ThrowDetector:  # pylint: disable=too-many-instance-attributes
             and valid_positions[-1] < zone_end
         ):
             self.cooldown = self.cooldown_frames
-            self.last_status = "WURF ERKANNT"
+            self.last_status = "Detected throw"
             return True, self.last_status
 
         # If the trend does not indicate a throw, update the status accordingly:

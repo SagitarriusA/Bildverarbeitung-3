@@ -15,7 +15,6 @@ class ThrowDetector:  # pylint: disable=too-many-instance-attributes
         self,
         history_length: int = 8,
         min_upward_delta: int = 20,
-        cooldown_frames: int = 30,
         zone_start_ratio: float = 0.65,
         zone_end_ratio: float = 0.35,
     ) -> None:
@@ -26,11 +25,9 @@ class ThrowDetector:  # pylint: disable=too-many-instance-attributes
         # Set the max frames for the history:
         self.history_length: int = max(3, history_length)
         self.min_upward_delta: int = min_upward_delta
-        self.cooldown_frames: int = max(0, cooldown_frames)
         self.zone_start_ratio: float = max(0.0, min(1.0, zone_start_ratio))
         self.zone_end_ratio: float = max(0.0, min(1.0, zone_end_ratio))
         self.history: Deque[Optional[int]] = deque(maxlen=self.history_length)
-        self.cooldown: int = 0
         self.last_status: str = "Waiting for movement"
 
     def reset(self) -> None:
@@ -40,12 +37,11 @@ class ThrowDetector:  # pylint: disable=too-many-instance-attributes
 
         # Clear the history and reset cooldown and status:
         self.history.clear()
-        self.cooldown = 0
         self.last_status = "Reset"
 
     def _get_largest_box_center(
         self, boxes: List[Tuple[int, int, int, int]]
-    ) -> Optional[int]:
+    ) -> Optional[Tuple[int, int]]:
         """
         Private method to get the center y-coordinate of the largest motion box.
         """
@@ -58,9 +54,9 @@ class ThrowDetector:  # pylint: disable=too-many-instance-attributes
         largest_box: Tuple[int, int, int, int] = max(
             boxes, key=lambda box: box[2] * box[3]
         )
-        _, y, _, h = largest_box
+        x, y, w, h = largest_box
 
-        return y + h // 2
+        return x + w // 2, y + h // 2
 
     def _calculate_trend(self) -> Optional[int]:
         """
@@ -80,25 +76,25 @@ class ThrowDetector:  # pylint: disable=too-many-instance-attributes
 
     def update(
         self, boxes: List[Tuple[int, int, int, int]], frame_height: int
-    ) -> Tuple[bool, str]:
+    ) -> Tuple[bool, str, Optional[float], Optional[float]]:
         """
         Update detector with current motion boxes and return detection state.
         """
 
         # Get the center y-coordinate of the largest box and update history:
-        center_y = self._get_largest_box_center(boxes)
-        self.history.append(center_y)
+        coord = self._get_largest_box_center(boxes)
 
-        # If we are in cooldown, decrement it and return the current status:
-        if self.cooldown > 0:
-            self.cooldown -= 1
-            self.last_status = "Cooldown"
-            return False, self.last_status
+        if coord is not None:
+            center_x, center_y = coord
+        else:
+            return False, "No motion detected", None, None
+
+        self.history.append(center_y)
 
         # If no valid center is detected, we cannot analyze movement:
         if center_y is None:
             self.last_status = "No motion detected"
-            return False, self.last_status
+            return False, self.last_status, None, None
 
         # Calculate the movement trend and analyze it against the defined zones:
         trend: Optional[int] = self._calculate_trend()
@@ -107,7 +103,7 @@ class ThrowDetector:  # pylint: disable=too-many-instance-attributes
         if trend is None:
             print("Not enough data to calculate trend")
             self.last_status = "Detect motion"
-            return False, self.last_status
+            return False, self.last_status, None, None
 
         # Filter out None values from history to analyze valid positions:
         valid_positions: List[int] = [p for p in self.history if p is not None]
@@ -115,7 +111,7 @@ class ThrowDetector:  # pylint: disable=too-many-instance-attributes
         # If there are no valid positions, we cannot analyze movement:
         if not valid_positions:
             self.last_status = "No motion detected"
-            return False, self.last_status
+            return False, self.last_status, None, None
 
         # Define the zones based on the frame height and check if the trend indicates a throw:
         zone_start: float = frame_height * self.zone_start_ratio
@@ -127,10 +123,9 @@ class ThrowDetector:  # pylint: disable=too-many-instance-attributes
             and valid_positions[0] > zone_start
             and valid_positions[-1] < zone_end
         ):
-            self.cooldown = self.cooldown_frames
             self.last_status = "Detected throw"
-            return True, self.last_status
+            return True, self.last_status, center_x, center_y
 
         # If the trend does not indicate a throw, update the status accordingly:
         self.last_status = "No motion detected"
-        return False, self.last_status
+        return False, self.last_status, None, None

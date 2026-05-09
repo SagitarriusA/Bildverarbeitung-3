@@ -1,0 +1,8 @@
+# =====================================
+# BV 3 project Git Ignore
+# =====================================
+
+# Python-Cache-files:
+__pycache__/
+*.py[cod]
+*$py.class
